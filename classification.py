@@ -116,16 +116,16 @@ class PolymorphClassifiy:
         length = [self.length(i) for i in range(self.roi_number)]
         intensity = [self.intensities(i) for i in range(self.roi_number)]
         branch = [self.branch_point_number(i)/self.length(i) for i in range(self.roi_number)]
-        convex = [self.intensities(i)/self.intensities(i).size for i in range(self.roi_number)]
+        rectangle = [self.rectangle_full(i) for i in range(self.roi_number)]
         main = [len(self.get_longest_path(i))/2*len(self.rois_xs[i]) for i in range(self.roi_number)]
         self.pca_data = pd.DataFrame({"peak":peak, 
                                       "length": length,
                                       "intensity": intensity,
                                       "branch point": branch,
-                                      "convex full": convex,
+                                      "rectangle full": rectangle,
                                       "main": main})
-        # width = [self.convert_xys_to_array(i)[0].shape[0] for i in range(self.roi_number)]
-        # height = [self.convert_xys_to_array(i)[0].shape[1] for i in range(self.roi_number)]
+        # width = [self.xys_to_array(i)[0].shape[0] for i in range(self.roi_number)]
+        # height = [self.xys_to_array(i)[0].shape[1] for i in range(self.roi_number)]
         # self.pca_data = pd.DataFrame({"length": length,
         #                               "height": height,
         #                              "width": width})
@@ -145,7 +145,7 @@ class PolymorphClassifiy:
         plt.ylabel("PC2")
         plt.show()
     
-    def convert_xys_to_array(self,r):
+    def xys_to_array(self,r):
         roi_xs = self.rois_xs[r]
         roi_ys = self.rois_ys[r]
         frame = self.rois_z[r]
@@ -172,8 +172,8 @@ class PolymorphClassifiy:
     
     def intensities(self,r):
 #         i = []
-#         arr = self.convert_xys_to_array(r)[0]
-        image_arr = self.convert_xys_to_array(r)[1]
+#         arr = self.xys_to_array(r)[0]
+        image_arr = self.xys_to_array(r)[1]
 #         masked = list(zip(*np.where(arr==1)))
 #         for _ in masked:
 #             x = _[0]
@@ -209,11 +209,11 @@ class PolymorphClassifiy:
         return solve(s)
     
     def get_longest_path(self,r):
-        arr = self.convert_xys_to_array(r)[0]
+        arr = self.xys_to_array(r)[0]
         max_path_length = 0
         max_path = []
         for pair in itertools.combinations(self.edges(arr), 2):
-            arr = self.convert_xys_to_array(r)[0]
+            arr = self.xys_to_array(r)[0]
             cur = self.get_path(arr,pair[0],pair[1])
             if len(cur) > max_path_length:
                 max_path = cur
@@ -222,7 +222,7 @@ class PolymorphClassifiy:
     
     def get_skelton_map(self,r):
         along = self.get_longest_path(r)
-        arr = self.convert_xys_to_array(r)[0]
+        arr = self.xys_to_array(r)[0]
         c = 10
         for a in along:
             x = a[0]
@@ -296,21 +296,23 @@ class PolymorphClassifiy:
         return len(self.peaks(r)[0])
     
     def branch_point_number(self,r):
-        arr = self.convert_xys_to_array(r)[0]
+        arr = self.xys_to_array(r)[0]
         bpn = self.branch_points(arr)
         return len(bpn)
     
+    def rectangle_full(self,r):
+        masked = np.copy(self.xys_to_array(r)[1])
+        masked[np.where(masked<220)] = 0
+        masked[np.where(masked!=0)] = 1
+        return np.sum(masked)/self.xys_to_array(r)[1].size
+        
     def PCA(self,r,ax=None):
         if not ax == None:
-            # plt.figure(figsize=(6, 6))
             ax.scatter(self.feature[:, 0], self.feature[:, 1], alpha=0.8)
             ax.scatter(self.feature[r, 0], self.feature[r, 1], c="red")
-            # plt.xlim(-50000,100000)
-            # ax.colorbar()
             ax.grid()
             ax.set_xlabel("PC1")
-            ax.set_ylabel("PC2")
-        # plt.show()
+            ax.set_ylabel("PC2")    
         
     def show_image(self):
         app = QtWidgets.QApplication(sys.argv)
@@ -318,11 +320,13 @@ class PolymorphClassifiy:
 
         form = MyQt(roi_max=len(self.rois_xs), 
                     fig=fig, 
-                    my_funcs=[self.convert_xys_to_array,
+                    my_funcs=[self.xys_to_array,
                               self.intensities_along_rel,
                               self.get_skelton_map,
                               self.peaks,
                               self.PCA])
         form.show()
         sys.exit(app.exec_())
+    
+    
 
