@@ -327,6 +327,41 @@ class PolymorphClassifiy:
                               self.PCA])
         form.show()
         sys.exit(app.exec_())
-    
-    
 
+def show_DBSCAN(data,feature,eps=0.8,min_samples=10):
+    db = DBSCAN(eps, min_samples).fit(data)
+    labels = db.labels_
+    color_names = ["blue","orange"]
+    colors = [color_names[x] for x in labels]
+    plt.figure(figsize=(20, 20))
+    c = 0
+    l = []
+    for x, y in zip(feature[:, 0], feature[:, 1]):
+        if colors[c] == 'orange':
+            plt.text(x, y, str(c), alpha=0.8, size=20)
+            l.append(c)
+        c += 1
+    plt.scatter(feature[:, 0], feature[:, 1], alpha=0.8, color=colors)
+    print(l)
+
+def show_kmeans(data,feature,color,n_clusters=2):
+    kmeans_model = KMeans(n_clusters, random_state=10).fit(feature)
+    labels = kmeans_model.labels_
+    color_codes = {0:'#00FF00', 1:'#FF0000', 2:'#0000FF',3:'#00FFFF',4:'#FF00FF'}  # green, red, blue
+    colors = [color_codes[x] for x in labels]
+
+    plt.figure(figsize=(20, 20))
+    c = 0
+    l = []
+    for x, y in zip(feature[:, 0], feature[:, 1]):
+        if colors[c] == color:
+            plt.text(x, y, str(c), alpha=0.8, size=20)
+            l.append(c)
+        c += 1
+    plt.scatter(feature[:, 0], feature[:, 1], alpha=0.8, color=colors)
+    print(l)
+    # plt.xlim(2,5)
+    plt.title("Principal Component Analysis")
+    plt.xlabel("The first principal component score")
+    plt.ylabel("The second principal component score")
+    plt.show()
