@@ -1,4 +1,5 @@
 import sys
+import os
 import itertools
 import functools
 import csv
@@ -76,6 +77,7 @@ class MyQt(QtWidgets.QWidget):
 class PolymorphClassifiy:
     def __init__(self,roi_path,image_path):
         self.I = io.imread(image_path)
+        self.M = self.masked()
         self.rois_xs = self.get_rois(roi_path)[0]
         self.rois_ys = self.get_rois(roi_path)[1]
         self.rois_z = self.get_rois(roi_path)[2]
@@ -111,6 +113,13 @@ class PolymorphClassifiy:
     def roi_number(self):
         return self._roi_number
     
+    def masked(self):
+        masked = np.copy(self.I[:])
+        masked[np.where(masked<220)] = 0
+        masked[np.where(masked!=0)] = 1
+        np.pad(masked,(10,10),"constant")
+        return masked
+        
     def analyze_pca(self):
         peak = [self.peak_number(i)/self.length(i) for i in range(self.roi_number)]
         length = [self.length(i) for i in range(self.roi_number)]
@@ -118,12 +127,16 @@ class PolymorphClassifiy:
         branch = [self.branch_point_number(i)/self.length(i) for i in range(self.roi_number)]
         rectangle = [self.rectangle_full(i) for i in range(self.roi_number)]
         main = [len(self.get_longest_path(i))/2*len(self.rois_xs[i]) for i in range(self.roi_number)]
+        mean_width = [np.mean(self.width(i)) for i in range(self.roi_number)]
+        aspect_ratio = [max(self.xys_to_array(i)[0].shape[1],self.xys_to_array(i)[0].shape[0])/min(self.xys_to_array(i)[0].shape[1],self.xys_to_array(i)[0].shape[0]) for i in range(self.roi_number)]
         self.pca_data = pd.DataFrame({"peak":peak, 
                                       "length": length,
                                       "intensity": intensity,
                                       "branch point": branch,
                                       "rectangle full": rectangle,
-                                      "main": main})
+                                      "main": main,
+                                      "mean width": mean_width,
+                                      "aspct ratio": aspect_ratio})
         # width = [self.xys_to_array(i)[0].shape[0] for i in range(self.roi_number)]
         # height = [self.xys_to_array(i)[0].shape[1] for i in range(self.roi_number)]
         # self.pca_data = pd.DataFrame({"length": length,
@@ -166,7 +179,7 @@ class PolymorphClassifiy:
         arr_ = arr_[1:-1,1:-1]
         arr[np.where(arr_==9)] = 0
         return arr.T, image_arr
-    
+
     def length(self,r):
         return len(self.rois_xs[r])
     
@@ -209,20 +222,39 @@ class PolymorphClassifiy:
         return solve(s)
     
     def get_longest_path(self,r):
-        arr = self.xys_to_array(r)[0]
-        max_path_length = 0
+        arr = np.copy(self.xys_to_array(r)[0])
+        image = np.copy(self.xys_to_array(r)[1])
+        image = np.pad(image,(1,1),"constant")
+        max_path_intensity = 0
         max_path = []
         for pair in itertools.combinations(self.edges(arr), 2):
-            arr = self.xys_to_array(r)[0]
-            cur = self.get_path(arr,pair[0],pair[1])
-            if len(cur) > max_path_length:
+            cur_intensity = 0
+            arr_ = np.zeros(self.xys_to_array(r)[0].shape)
+            cur = self.get_path(np.copy(arr),pair[0],pair[1])
+            for c in cur:
+                x = c[0] + 1
+                y = c[1] + 1
+                cur_intensity += np.sum(image[x-1:x+2,y-1:y+2])
+            if cur_intensity > max_path_intensity:
                 max_path = cur
-                max_path_length = len(cur)
+                max_path_intensity = cur_intensity
         return max_path
+    
+    # def get_longest_path(self,r):
+    #     arr = self.xys_to_array(r)[0]
+    #     max_path_length = 0
+    #     max_path = []
+    #     for pair in itertools.combinations(self.edges(arr), 2):
+    #         arr = self.xys_to_array(r)[0]
+    #         cur = self.get_path(arr,pair[0],pair[1])
+    #         if len(cur) > max_path_length:
+    #             max_path = cur
+    #             max_path_length = len(cur)
+    #     return max_path
     
     def get_skelton_map(self,r):
         along = self.get_longest_path(r)
-        arr = self.xys_to_array(r)[0]
+        arr = np.copy(self.xys_to_array(r)[0])
         c = 10
         for a in along:
             x = a[0]
@@ -231,6 +263,23 @@ class PolymorphClassifiy:
             c += 1
         return arr
     
+    def normalized(func):
+            def wrapper(self,r,ax=None):
+                i = func(self,r,ax)
+                i_min = np.min(i)
+                i_max = np.max(i)
+                if i_max-i_min != 0:
+                    i_nor = (i - i_min) / (i_max - i_min)
+                    if not ax == None:
+                        ax.plot(i_nor)
+                else:
+                    i_nor = i
+                    if not ax == None:
+                        ax.plot(i_nor)
+                return i_nor
+            return wrapper
+    
+    @normalized
     def intensities_along(self,r,ax=None):
         i = []
         x_min = self.rois_min_x[r]
@@ -248,23 +297,39 @@ class PolymorphClassifiy:
 #             i = rolling_ball(i, radius=1)
         else:
             i = np.zeros(k)
-        if not ax == None:
-            ax.plot(i)
         return i
     
-    def intensities_along_rel(self,r,ax=None):
-        i = self.intensities_along(r)
-        i_min = np.min(i)
-        i_max = np.max(i)
-        if i_max-i_min != 0:
-            i_rel = (i - i_min) / (i_max - i_min)
-            if not ax == None:
-                ax.plot(i_rel)
-        else:
-            i_rel = i
-            if not ax == None:
-                ax.plot(i_rel)
-        return i_rel
+    def width(self,r,ax=None):
+            i = []
+            x_min = self.rois_min_x[r]
+            y_min = self.rois_min_y[r]
+            z = self.rois_z[r]
+            along = self.get_longest_path(r)
+            l = 10
+            for c,a in enumerate(along[:-1]):
+                x = a[1] + x_min
+                y = a[0] + y_min
+                if along[c+1][1] == a[1]:
+                    i.append(np.sum(self.M[z][y:y+1,x-l:x+l+1]))
+                elif along[c+1][0] == a[0]:
+                    i.append(np.sum(self.M[z][y-l:y+l+1,x:x+1]))
+                elif (along[c+1][1]-a[1])/(along[c+1][0]-a[0]) < 0:
+                    p = []
+                    for _ in range(-1*l,l+1):
+                         p.append(np.sum(self.M[z][y-_:y-_+1,x-_:x-_+1]))
+                else:
+                    p = []
+                    for _ in range(-1*l,l+1):
+                         p.append(np.sum(self.M[z][y+_:y+_+1,x-_:x-_+1]))
+                    i.append(sum(p))
+            k = 10
+            if len(i) > 0:
+                v = np.ones(k)
+                i = np.convolve(i, v, mode='same')
+    #             i = rolling_ball(i, radius=1)
+            else:
+                i = np.zeros(k)
+            return i
     
     def intensity_stds_along(self,r,ax=None):
         i = []
@@ -281,8 +346,7 @@ class PolymorphClassifiy:
         return i
     
     def peaks(self,r,ax=None):
-#         intensity = self.intensities_along(r)
-        intensity = self.intensities_along_rel(r)
+        intensity = self.intensities_along(r)
 #         ind_peaks = signal.argrelmax(intensity, order=4)[0]
 #         ind_peaks = signal.find_peaks(intensity,width=0,distance=1,height=0.1)[0]
         LoG = blob_log(intensity, max_sigma=50, num_sigma=1, threshold=0.015)
@@ -321,13 +385,29 @@ class PolymorphClassifiy:
         form = MyQt(roi_max=len(self.rois_xs), 
                     fig=fig, 
                     my_funcs=[self.xys_to_array,
-                              self.intensities_along_rel,
+                              self.intensities_along,
                               self.get_skelton_map,
                               self.peaks,
                               self.PCA])
         form.show()
         sys.exit(app.exec_())
+    
+    def save_images(self,l:list,new_folder:str):
+        for r in l:
+            roi_xs = self.rois_xs[r]
+            roi_ys = self.rois_ys[r]
+            frame = self.rois_z[r]
+            image_arr = np.pad(self.I[frame],(10,10),"constant")
+            x_min = self.rois_min_x[r] + 10
+            x_max = self.rois_max_x[r] + 10
+            y_min = self.rois_min_y[r] + 10
+            y_max = self.rois_max_y[r] + 10
 
+            image_arr = image_arr[y_min-10:y_max+11,x_min-10:x_max+11]
+            path = new_folder + fr"\image_{r}.tiff"
+            os.makedirs(new_folder, exist_ok=True)
+            plt.imsave(path, image_arr)
+        
 def show_DBSCAN(data,feature,eps=0.8,min_samples=10):
     db = DBSCAN(eps, min_samples).fit(data)
     labels = db.labels_
@@ -365,3 +445,4 @@ def show_kmeans(data,feature,color,n_clusters=2):
     plt.xlabel("The first principal component score")
     plt.ylabel("The second principal component score")
     plt.show()
+    return l
