@@ -128,7 +128,8 @@ class PolymorphClassifiy:
         rectangle = [self.rectangle_full(i) for i in range(self.roi_number)]
         main = [len(self.get_longest_path(i))/2*len(self.rois_xs[i]) for i in range(self.roi_number)]
         mean_width = [np.mean(self.width(i)) for i in range(self.roi_number)]
-        aspect_ratio = [max(self.xys_to_array(i)[0].shape[1],self.xys_to_array(i)[0].shape[0])/min(self.xys_to_array(i)[0].shape[1],self.xys_to_array(i)[0].shape[0]) for i in range(self.roi_number)]
+        aspect_ratio = [np.mean(self.width(i))/self.length(i) for i in range(self.roi_number)]
+        
         self.pca_data = pd.DataFrame({"peak":peak, 
                                       "length": length,
                                       "intensity": intensity,
@@ -137,18 +138,14 @@ class PolymorphClassifiy:
                                       "main": main,
                                       "mean width": mean_width,
                                       "aspct ratio": aspect_ratio})
-        # width = [self.xys_to_array(i)[0].shape[0] for i in range(self.roi_number)]
-        # height = [self.xys_to_array(i)[0].shape[1] for i in range(self.roi_number)]
-        # self.pca_data = pd.DataFrame({"length": length,
-        #                               "height": height,
-        #                              "width": width})
+        
         self.pca_data = self.pca_data.apply(lambda x: (x-x.mean())/x.std(), axis=0)
         pca = PCA()
         pca.fit(self.pca_data)
         self.feature = pca.transform(self.pca_data)
         return pca
     
-    def plot_contribution_ratio(self):
+    def show_eigenvectors(self):
         plt.figure(figsize=(6, 6))
         for x, y, name in zip(self.pca.components_[0], self.pca.components_[1], self.pca_data.columns):
             plt.text(x, y, name)
@@ -184,14 +181,7 @@ class PolymorphClassifiy:
         return len(self.rois_xs[r])
     
     def intensities(self,r):
-#         i = []
-#         arr = self.xys_to_array(r)[0]
         image_arr = self.xys_to_array(r)[1]
-#         masked = list(zip(*np.where(arr==1)))
-#         for _ in masked:
-#             x = _[0]
-#             y = _[1]
-#             i.append(np.sum(image_arr[x-self.radius:x+self.radius+1,y-self.radius:y+self.radius+1]))
         return np.sum(image_arr)
     
     def edges(self,arr):
@@ -239,18 +229,6 @@ class PolymorphClassifiy:
                 max_path = cur
                 max_path_intensity = cur_intensity
         return max_path
-    
-    # def get_longest_path(self,r):
-    #     arr = self.xys_to_array(r)[0]
-    #     max_path_length = 0
-    #     max_path = []
-    #     for pair in itertools.combinations(self.edges(arr), 2):
-    #         arr = self.xys_to_array(r)[0]
-    #         cur = self.get_path(arr,pair[0],pair[1])
-    #         if len(cur) > max_path_length:
-    #             max_path = cur
-    #             max_path_length = len(cur)
-    #     return max_path
     
     def get_skelton_map(self,r):
         along = self.get_longest_path(r)
@@ -408,7 +386,7 @@ class PolymorphClassifiy:
             os.makedirs(new_folder, exist_ok=True)
             plt.imsave(path, image_arr)
         
-def show_DBSCAN(data,feature,eps=0.8,min_samples=10):
+def show_DBSCAN(data, feature, eps=0.8, min_samples=10, text=True):
     db = DBSCAN(eps, min_samples).fit(data)
     labels = db.labels_
     color_names = ["blue","orange"]
@@ -418,16 +396,17 @@ def show_DBSCAN(data,feature,eps=0.8,min_samples=10):
     l = []
     for x, y in zip(feature[:, 0], feature[:, 1]):
         if colors[c] == 'orange':
-            plt.text(x, y, str(c), alpha=0.8, size=20)
+            if text:
+                plt.text(x, y, str(c), alpha=0.8, size=20)
             l.append(c)
         c += 1
-    plt.scatter(feature[:, 0], feature[:, 1], alpha=0.8, color=colors)
+    plt.scatter(feature[:, 0], feature[:, 1], alpha=0.8, color=colors, s=50)
     print(l)
 
-def show_kmeans(data,feature,color,n_clusters=2):
+def show_kmeans(data, feature, color, n_clusters=2,text=True):
     kmeans_model = KMeans(n_clusters, random_state=10).fit(feature)
     labels = kmeans_model.labels_
-    color_codes = {0:'#00FF00', 1:'#FF0000', 2:'#0000FF',3:'#00FFFF',4:'#FF00FF'}  # green, red, blue
+    color_codes = {0:'green', 1:'blue', 2:'magenta',3:'orange',4:'deepskyblue'}
     colors = [color_codes[x] for x in labels]
 
     plt.figure(figsize=(20, 20))
@@ -435,12 +414,12 @@ def show_kmeans(data,feature,color,n_clusters=2):
     l = []
     for x, y in zip(feature[:, 0], feature[:, 1]):
         if colors[c] == color:
-            plt.text(x, y, str(c), alpha=0.8, size=20)
+            if text:
+                plt.text(x, y, str(c), alpha=0.8, size=20)
             l.append(c)
         c += 1
-    plt.scatter(feature[:, 0], feature[:, 1], alpha=0.8, color=colors)
+    plt.scatter(feature[:, 0], feature[:, 1], alpha=0.8, color=colors, s=50)
     print(l)
-    # plt.xlim(2,5)
     plt.title("Principal Component Analysis")
     plt.xlabel("The first principal component score")
     plt.ylabel("The second principal component score")
